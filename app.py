@@ -1,63 +1,31 @@
 from __future__ import division
 
-import random
 import sys
-import math
 import traceback
-from PyQt4.QtCore import QSettings
+from PyQt4.QtCore import QSettings, QThread, pyqtSignal
 from PyQt4.QtGui import QApplication, QMainWindow, QMessageBox, QFileDialog
 import pysubs2
 from retimer import Ui_MainWindow
+from algorithms import solver_driver
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def get_clusters(subs, include_comments=False):
-    lines = sorted(line for line in subs if not line.is_comment or include_comments)
-    i = 0
+class Worker(QThread):
+    updated = pyqtSignal(int, float, float, int)
+    done = pyqtSignal(float, float)
 
-    while i < len(lines):
-        start = lines[i].start
-        end = lines[i].end
-        cluster_lines = [lines[i]]
+    def __init__(self, parent, ref_subs, subs, settings):
+        QThread.__init__(self, parent)
+        self.ref_subs = ref_subs
+        self.subs = subs
+        self.settings = settings
 
-        while True:
-            i += 1
-            if i < len(lines) and lines[i].start <= end:
-                end = max(end, lines[i].end)
-                cluster_lines.append(lines[i])
+    def run(self):
+        for i, t, x, fx in solver_driver(self.ref_subs, self.subs, **self.settings):
+            if i is None:
+                self.done.emit(x, fx)
             else:
-                break
-
-        yield start, end, cluster_lines
-
-
-def discretize(clusters, unit=100):
-    times = []
-
-    for start, end, _ in clusters:
-        times.extend(range(start//unit, end//unit))
-
-    return times
-
-def simulated_annealing_solver(x0, move, objective, t0=1000, iterations=100, decay=0.97):
-    t = t0
-    x, fx = x0, objective(x0)
-    bestx, bestfx = x, fx
-
-    for _ in range(iterations):
-        newx = move(x, t)
-        newfx = objective(newx)
-        delta = (newfx - fx)**2
-
-        if newfx < fx or math.exp(-delta/t) > random.random():
-            x, fx = newx, newfx # keep the new state
-
-            if fx < bestfx:
-                bestx, bestfx = x, fx
-
-        t *= decay
-
-    return bestx, bestfx
+                self.updated.emit(i, t, x, fx)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -71,51 +39,65 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.refLineEdit.setText(str(self.settings.value("refLine", type=str)))
         self.subsLineEdit.setText(str(self.settings.value("subsLine", type=str)))
 
-        self.dryRunButton.clicked.connect(self.optimize)
-        self.runButton.clicked.connect(self.run)
+        self.dryRunButton.clicked.connect(self.start_processing)
+        self.runButton.clicked.connect(self.start_processing)
         self.refButton.clicked.connect(lambda: self.refLineEdit.setText(self.get_file()))
         self.subsButton.clicked.connect(lambda: self.subsLineEdit.setText(self.get_file()))
 
         self.refLineEdit.textChanged.connect(lambda s: self.settings.setValue("refLine", s))
         self.subsLineEdit.textChanged.connect(lambda s: self.settings.setValue("subsLine", s))
 
+        self.compute_decay()
+        self.iterationsSpinBox.valueChanged.connect(self.compute_decay)
+        self.unitSpinBox.valueChanged.connect(self.compute_decay)
+        self.t0SpinBox.valueChanged.connect(self.compute_decay)
+
     def get_file(self):
         return QFileDialog.getOpenFileName(self,
             caption=self.tr("Select Subtitle File"),
             filter=self.tr("Subtitle files (*.ass *.srt);;All files (*.*)"))
 
-    def optimize(self):
+    def start_processing(self):
         try:
-            ref_subs = pysubs2.load(str(self.refLineEdit.text()))
-            subs = pysubs2.load(str(self.subsLineEdit.text()))
+            self.ref_subs = pysubs2.load(str(self.refLineEdit.text()))
+            self.subs = pysubs2.load(str(self.subsLineEdit.text()))
 
-            unit = int(self.unitSpinBox.value())
-            t0 = int(self.t0SpinBox.value())
-            decay = float(self.decaySpinBox.value())
-            iterations = int(self.iterationsSpinBox.value())
+            settings = {
+                "unit": int(self.unitSpinBox.value()),
+                "t0": int(self.t0SpinBox.value()),
+                "decay": float(self.decaySpinBox.value()),
+                "iterations": int(self.iterationsSpinBox.value()),
+            }
 
-            ref_times = set(discretize(get_clusters(ref_subs), unit))
-            times = set(discretize(get_clusters(subs), unit))
+            self.progressBar.setMaximum(settings["iterations"])
 
-            x0 = 0
-            move = lambda x, t: random.gauss(x, t)
-            objective = lambda delta: len(ref_times ^ set(t+delta//unit for t in times))
-
-            best_delta, e = simulated_annealing_solver(x0, move, objective, t0, iterations=iterations, decay=decay)
-            self.logLabel.setText("shifted by %.2f s (error=%d)" % (best_delta/1000, e))
-            return best_delta
+            self.thread = Worker(self, self.ref_subs, self.subs, settings)
+            self.thread.updated.connect(self.updated)
+            self.thread.done.connect(self.done)
+            self.thread.start()
         except Exception as exc:
             QMessageBox.critical(self, self.tr("Error"), traceback.format_exc(exc))
 
-    def run(self):
-        try:
-            path = str(self.subsLineEdit.text())
-            subs = pysubs2.load(path)
-            delta = self.optimize()
-            subs.shift(ms=delta)
-            subs.save(path)
-        except Exception as exc:
-            QMessageBox.critical(self, self.tr("Error"), traceback.format_exc(exc))
+    def updated(self, i, t, x, fx):
+        if i % 2 > 0: return
+
+        self.progressBar.setValue(i+1)
+        self.tSpinBox.setValue(t)
+        self.shiftLineEdit.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.errorSpinBox.setValue(fx)
+
+    def done(self, x, fx):
+        self.progressBar.setValue(self.progressBar.maximum())
+        self.shiftLineEdit.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.errorSpinBox.setValue(fx)
+
+    def compute_decay(self):
+        n = int(self.iterationsSpinBox.value())
+        unit = int(self.unitSpinBox.value())
+        t0 = int(self.t0SpinBox.value())
+
+        decay = (unit / t0)**(1/n)
+        self.decaySpinBox.setValue(decay)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
