@@ -21,16 +21,28 @@
        <layout class="QVBoxLayout" name="verticalLayout">
         <item>
          <widget class="QGroupBox" name="refGroupBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="title">
-           <string>Reference subtitles (w/ correct timing)</string>
+           <string>Reference subtitles or MKV</string>
           </property>
           <layout class="QHBoxLayout" name="horizontalLayout"/>
          </widget>
         </item>
         <item>
          <widget class="QGroupBox" name="subsGroupBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="title">
-           <string>Your subtitles</string>
+           <string>Your subtitles (to be shifted)</string>
           </property>
           <layout class="QHBoxLayout" name="horizontalLayout_2"/>
          </widget>
@@ -39,25 +51,18 @@
       </item>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_2">
-        <item>
-         <spacer name="verticalSpacer_2">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>40</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
+        <property name="topMargin">
+         <number>6</number>
+        </property>
         <item>
          <widget class="QPushButton" name="runButton">
           <property name="minimumSize">
            <size>
             <width>100</width>
-            <height>32</height>
+            <height>30</height>
            </size>
           </property>
           <property name="text">
@@ -98,35 +103,18 @@
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_3">
          <item>
-          <widget class="QProgressBar" name="progressBar">
-           <property name="value">
-            <number>0</number>
-           </property>
-           <property name="format">
-            <string> %v/%m</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <layout class="QFormLayout" name="formLayout_2">
-           <item row="0" column="0">
-            <widget class="QLabel" name="label_5">
-             <property name="text">
-              <string>step size</string>
-             </property>
-            </widget>
-           </item>
            <item row="1" column="0">
             <widget class="QLabel" name="label_7">
              <property name="text">
-              <string>shift</string>
+              <string>Shift</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="0">
+           <item row="3" column="0">
             <widget class="QLabel" name="label_8">
              <property name="text">
-              <string>total mismatch</string>
+              <string>Mismatch</string>
              </property>
             </widget>
            </item>
@@ -136,7 +124,7 @@
               <bool>false</bool>
              </property>
              <property name="alignment">
-              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              <set>Qt::AlignCenter</set>
              </property>
              <property name="readOnly">
               <bool>true</bool>
@@ -146,35 +134,7 @@
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QDoubleSpinBox" name="stepSizeDisplay">
-             <property name="wrapping">
-              <bool>false</bool>
-             </property>
-             <property name="frame">
-              <bool>false</bool>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-             </property>
-             <property name="readOnly">
-              <bool>true</bool>
-             </property>
-             <property name="buttonSymbols">
-              <enum>QAbstractSpinBox::NoButtons</enum>
-             </property>
-             <property name="keyboardTracking">
-              <bool>false</bool>
-             </property>
-             <property name="prefix">
-              <string/>
-             </property>
-             <property name="suffix">
-              <string> s</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
+           <item row="3" column="1">
             <widget class="QDoubleSpinBox" name="mismatchDisplay">
              <property name="wrapping">
               <bool>false</bool>
@@ -202,6 +162,61 @@
              </property>
             </widget>
            </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="stepSizeDisplay">
+             <property name="wrapping">
+              <bool>false</bool>
+             </property>
+             <property name="frame">
+              <bool>false</bool>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+             </property>
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+             <property name="buttonSymbols">
+              <enum>QAbstractSpinBox::NoButtons</enum>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+             <property name="prefix">
+              <string/>
+             </property>
+             <property name="suffix">
+              <string> s</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="label_5">
+             <property name="text">
+              <string>Step size</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QProgressBar" name="progressBar">
+             <property name="value">
+              <number>0</number>
+             </property>
+             <property name="textVisible">
+              <bool>false</bool>
+             </property>
+             <property name="format">
+              <string> %v/%m</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_6">
+             <property name="text">
+              <string>Iteration</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </item>
         </layout>
@@ -219,7 +234,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="label">
            <property name="text">
-            <string>step size</string>
+            <string>Step size</string>
            </property>
           </widget>
          </item>
@@ -245,7 +260,7 @@
          <item row="1" column="0">
           <widget class="QLabel" name="label_3">
            <property name="text">
-            <string>iterations</string>
+            <string>Iterations</string>
            </property>
           </widget>
          </item>
@@ -258,27 +273,56 @@
             <number>999999</number>
            </property>
            <property name="singleStep">
-            <number>50</number>
+            <number>10</number>
            </property>
            <property name="value">
             <number>400</number>
            </property>
           </widget>
          </item>
-         <item row="2" column="0">
+         <item row="3" column="0">
+          <widget class="QLabel" name="label_4">
+           <property name="text">
+            <string>Precision</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QSpinBox" name="unitSpinBox">
+           <property name="suffix">
+            <string> ms</string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>999999</number>
+           </property>
+           <property name="singleStep">
+            <number>10</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
           <widget class="QLabel" name="label_2">
            <property name="enabled">
             <bool>false</bool>
            </property>
            <property name="text">
-            <string>decay</string>
+            <string>Decay</string>
            </property>
           </widget>
          </item>
-         <item row="2" column="1">
+         <item row="4" column="1">
           <widget class="QDoubleSpinBox" name="decaySpinBox">
            <property name="enabled">
             <bool>false</bool>
+           </property>
+           <property name="buttonSymbols">
+            <enum>QAbstractSpinBox::NoButtons</enum>
            </property>
            <property name="decimals">
             <number>3</number>
@@ -294,29 +338,6 @@
            </property>
            <property name="value">
             <double>0.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="0">
-          <widget class="QLabel" name="label_4">
-           <property name="text">
-            <string>precision</string>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="1">
-          <widget class="QSpinBox" name="unitSpinBox">
-           <property name="suffix">
-            <string> ms</string>
-           </property>
-           <property name="minimum">
-            <number>1</number>
-           </property>
-           <property name="maximum">
-            <number>999999</number>
-           </property>
-           <property name="value">
-            <number>100</number>
            </property>
           </widget>
          </item>

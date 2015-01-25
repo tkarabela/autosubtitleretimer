@@ -2,37 +2,61 @@ from __future__ import division, unicode_literals
 
 import sys
 import traceback
+from six import text_type as _str
 from PyQt4.QtCore import QThread, pyqtSignal
 from PyQt4.QtGui import QApplication, QMainWindow, QMessageBox
 import pysubs2
 from ui_mainwindow import Ui_MainWindow
 from selectfilewidget import SelectFileWidget
 from algorithms import solver_driver
+from mkvhandler import extract_subtitle_track
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def time_to_str(ms):
+    return pysubs2.time.ms_to_str(ms, fractions=True)
+
 class Worker(QThread):
+    ENCODING = "latin-1"
+
     updated = pyqtSignal(int, float, float, int)
     done = pyqtSignal(float, float)
+    failed = pyqtSignal(_str)
 
-    def __init__(self, parent, ref_subs, subs, settings):
+    def __init__(self, parent, ref_path, subs_path, write_file, settings):
         QThread.__init__(self, parent)
-        self.ref_subs = ref_subs
-        self.subs = subs
+        self.ref_path = ref_path
+        self.subs_path = subs_path
         self.settings = settings
+        self.write_file = write_file
 
     def run(self):
-        for i, t, x, fx in solver_driver(self.ref_subs, self.subs, **self.settings):
-            if i is None:
-                self.done.emit(x, fx)
+        try:
+            if self.ref_path.lower().endswith(".mkv"):
+                ref_subs = extract_subtitle_track(self.ref_path)
             else:
-                self.updated.emit(i, t, x, fx)
+                ref_subs = pysubs2.load(self.ref_path, self.ENCODING)
+
+            subs = pysubs2.load(self.subs_path, self.ENCODING)
+            delta, error = None, None
+
+            for i, t, x, fx in solver_driver(ref_subs, subs, **self.settings):
+                if i is None:
+                    delta, error = x, fx
+                else:
+                    self.updated.emit(i, t, x, fx)
+
+            if self.write_file:
+                subs.shift(ms=delta)
+                subs.save(self.subs_path, self.ENCODING)
+
+            self.done.emit(delta, error)
+        except Exception as exc:
+            self.failed.emit(traceback.format_exc(exc))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    ENCODING = "latin-1"
-
     def __init__(self, parent=None):
         super(MainWindow, self).__init__(parent)
         self.setupUi(self)
@@ -55,9 +79,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return int(self.stepSizeSpinBox.value()) * 1000
 
     def start_processing(self, write_file=True):
+        if not self.refFile.path:
+            QMessageBox.critical(self, self.tr("Error"), self.tr("Please select reference subtitles or MKV file."))
+            return
+        elif not self.subsFile.path:
+            QMessageBox.critical(self, self.tr("Error"), self.tr("Please select subtitles to be retimed."))
+            return
+
         try:
-            self.ref_subs = pysubs2.load(self.refFile.path, self.ENCODING)
-            self.subs = pysubs2.load(self.subsFile.path, self.ENCODING)
+            self.enableButtons(False)
 
             settings = {
                 "unit": int(self.unitSpinBox.value()),
@@ -66,17 +96,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "iterations": int(self.iterationsSpinBox.value()),
             }
 
-            self.progressBar.setMaximum(settings["iterations"])
+            self.progressBar.setMaximum(0)
 
-            self.thread = Worker(self, self.ref_subs, self.subs, settings)
+            self.thread = Worker(self, self.refFile.path, self.subsFile.path, write_file, settings)
             self.thread.updated.connect(self.updated)
             self.thread.done.connect(self.done)
-            if write_file:
-                self.thread.done.connect(self.shiftAndWrite)
+            self.thread.failed.connect(self.failed)
             self.thread.start()
-            self.enableButtons(False)
         except Exception as exc:
             QMessageBox.critical(self, self.tr("Error"), traceback.format_exc(exc))
+            self.enableButtons(True)
 
     def getUnit(self):
         return self.unitSpinBox.value()
@@ -90,14 +119,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def updated(self, i, t, x, fx):
         if i % 2 > 0: return
 
+        self.progressBar.setMaximum(int(self.iterationsSpinBox.value()))
         self.progressBar.setValue(i+1)
         self.stepSizeDisplay.setValue(t/1000)
-        self.shiftDisplay.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.shiftDisplay.setText(time_to_str(x))
         self.mismatchDisplay.setValue(fx/self.getUnit())
+
+    def failed(self, trace):
+        self.enableButtons(True)
+        self.progressBar.setMaximum(1)
+        QMessageBox.critical(self, self.tr("Error"), trace)
 
     def done(self, x, fx):
         self.progressBar.setValue(self.progressBar.maximum())
-        self.shiftDisplay.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.shiftDisplay.setText(time_to_str(x))
         self.mismatchDisplay.setValue(fx/self.getUnit())
         self.enableButtons(True)
 
