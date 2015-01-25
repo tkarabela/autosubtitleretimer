@@ -1,11 +1,12 @@
-from __future__ import division
+from __future__ import division, unicode_literals
 
 import sys
 import traceback
-from PyQt4.QtCore import QSettings, QThread, pyqtSignal
-from PyQt4.QtGui import QApplication, QMainWindow, QMessageBox, QFileDialog
+from PyQt4.QtCore import QThread, pyqtSignal
+from PyQt4.QtGui import QApplication, QMainWindow, QMessageBox
 import pysubs2
-from retimer import Ui_MainWindow
+from ui_mainwindow import Ui_MainWindow
+from selectfilewidget import SelectFileWidget
 from algorithms import solver_driver
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -30,41 +31,37 @@ class Worker(QThread):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    ENCODING = "latin-1"
+
     def __init__(self, parent=None):
         super(MainWindow, self).__init__(parent)
         self.setupUi(self)
 
-        self.settings = QSettings("autosubretimer", "autosubretimer")
+        self.refFile = SelectFileWidget(self, "*.ass *.srt *.mkv")
+        self.refGroupBox.layout().addWidget(self.refFile)
 
-        self.refLineEdit.setText(str(self.settings.value("refLine", type=str)))
-        self.subsLineEdit.setText(str(self.settings.value("subsLine", type=str)))
+        self.subsFile = SelectFileWidget(self, "*.ass *.srt")
+        self.subsGroupBox.layout().addWidget(self.subsFile)
 
-        self.dryRunButton.clicked.connect(self.start_processing)
-        self.runButton.clicked.connect(self.start_processing)
-        self.refButton.clicked.connect(lambda: self.refLineEdit.setText(self.get_file()))
-        self.subsButton.clicked.connect(lambda: self.subsLineEdit.setText(self.get_file()))
-
-        self.refLineEdit.textChanged.connect(lambda s: self.settings.setValue("refLine", s))
-        self.subsLineEdit.textChanged.connect(lambda s: self.settings.setValue("subsLine", s))
+        self.dryRunButton.clicked.connect(lambda: self.start_processing(False))
+        self.runButton.clicked.connect(lambda: self.start_processing(True))
 
         self.compute_decay()
         self.iterationsSpinBox.valueChanged.connect(self.compute_decay)
         self.unitSpinBox.valueChanged.connect(self.compute_decay)
-        self.t0SpinBox.valueChanged.connect(self.compute_decay)
+        self.stepSizeSpinBox.valueChanged.connect(self.compute_decay)
 
-    def get_file(self):
-        return QFileDialog.getOpenFileName(self,
-            caption=self.tr("Select Subtitle File"),
-            filter=self.tr("Subtitle files (*.ass *.srt);;All files (*.*)"))
+    def get_t0(self):
+        return int(self.stepSizeSpinBox.value()) * 1000
 
-    def start_processing(self):
+    def start_processing(self, write_file=True):
         try:
-            self.ref_subs = pysubs2.load(str(self.refLineEdit.text()))
-            self.subs = pysubs2.load(str(self.subsLineEdit.text()))
+            self.ref_subs = pysubs2.load(self.refFile.path, self.ENCODING)
+            self.subs = pysubs2.load(self.subsFile.path, self.ENCODING)
 
             settings = {
                 "unit": int(self.unitSpinBox.value()),
-                "t0": int(self.t0SpinBox.value()),
+                "t0": self.get_t0(),
                 "decay": float(self.decaySpinBox.value()),
                 "iterations": int(self.iterationsSpinBox.value()),
             }
@@ -74,30 +71,54 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.thread = Worker(self, self.ref_subs, self.subs, settings)
             self.thread.updated.connect(self.updated)
             self.thread.done.connect(self.done)
+            if write_file:
+                self.thread.done.connect(self.shiftAndWrite)
             self.thread.start()
+            self.enableButtons(False)
         except Exception as exc:
             QMessageBox.critical(self, self.tr("Error"), traceback.format_exc(exc))
+
+    def getUnit(self):
+        return self.unitSpinBox.value()
+
+    def enableButtons(self, enabled):
+        self.runButton.setEnabled(enabled)
+        self.dryRunButton.setEnabled(enabled)
+        self.refFile.setEnabled(enabled)
+        self.subsFile.setEnabled(enabled)
 
     def updated(self, i, t, x, fx):
         if i % 2 > 0: return
 
         self.progressBar.setValue(i+1)
-        self.tSpinBox.setValue(t)
-        self.shiftLineEdit.setText(pysubs2.time.ms_to_str(x, fractions=True))
-        self.errorSpinBox.setValue(fx)
+        self.stepSizeDisplay.setValue(t/1000)
+        self.shiftDisplay.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.mismatchDisplay.setValue(fx/self.getUnit())
 
     def done(self, x, fx):
         self.progressBar.setValue(self.progressBar.maximum())
-        self.shiftLineEdit.setText(pysubs2.time.ms_to_str(x, fractions=True))
-        self.errorSpinBox.setValue(fx)
+        self.shiftDisplay.setText(pysubs2.time.ms_to_str(x, fractions=True))
+        self.mismatchDisplay.setValue(fx/self.getUnit())
+        self.enableButtons(True)
+
+    def shiftAndWrite(self, x, fx):
+        try:
+            self.subs.shift(ms=x)
+            self.subs.save(self.subsFile.path, self.ENCODING)
+        except Exception as exc:
+            QMessageBox.critical(self, self.tr("Error"), traceback.format_exc(exc))
 
     def compute_decay(self):
         n = int(self.iterationsSpinBox.value())
         unit = int(self.unitSpinBox.value())
-        t0 = int(self.t0SpinBox.value())
+        t0 = self.get_t0()
 
         decay = (unit / t0)**(1/n)
         self.decaySpinBox.setValue(decay)
+        if decay < 0.95:
+            self.decaySpinBox.setStyleSheet("color: red")
+        else:
+            self.decaySpinBox.setStyleSheet("")
 
 # ----------------------------------------------------------------------------------------------------------------------
 

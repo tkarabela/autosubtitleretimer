@@ -10,7 +10,7 @@ run:
 	$(PYTHON) app.py
 
 ui: $(UI_FILES)
-	$(PYTHON) -c 'import PyQt4.uic; PyQt4.uic.compileUiDir(".", recurse=True)'
+	$(PYTHON) -c 'import PyQt4.uic; PyQt4.uic.compileUiDir(".", recurse=True, map=lambda d, fname: (d, "ui_"+fname))'
 
 test:
 	$(PYTHON) -m nose --with-doctest
